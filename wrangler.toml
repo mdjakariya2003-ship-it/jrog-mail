@@ -2,10 +2,8 @@ name = "jrog-mail"
 main = "worker.js"
 compatibility_date = "2025-01-01"
 
-# ওয়েব অ্যাপের ঠিকানা: https://mail.jrog.com
-routes = [
-  { pattern = "mail.jrog.com", custom_domain = true, zone_name = "jrog.com" }
-]
+# ডোমেইন পরে আলাদাভাবে জোড়া হবে (এখন routes নেই)
+workers_dev = true
 
 [vars]
 DOMAIN = "jrog.com"
