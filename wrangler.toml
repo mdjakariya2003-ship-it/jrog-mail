@@ -1,0 +1,20 @@
+name = "jrog-mail"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# ওয়েব অ্যাপের ঠিকানা: https://mail.jrog.com
+routes = [
+  { pattern = "mail.jrog.com", custom_domain = true }
+]
+
+[vars]
+DOMAIN = "jrog.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jrog-mail"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+# প্রতিদিন রাত ৩টায় (UTC) ৩০ দিনের পুরোনো মেইল মুছবে
+[triggers]
+crons = ["0 3 * * *"]

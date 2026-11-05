@@ -1,0 +1,9 @@
+{
+  "name": "jrog-mail",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "postal-mime": "^2.4.0"
+  }
+}
