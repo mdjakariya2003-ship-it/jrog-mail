@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6c5ce7">
+<title>Trem Mail – ফ্রি টেম্প মেইল</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">✉</span> Trem Mail</div>
+  <button id="themeBtn" class="icon-btn" title="থিম">🌓</button>
+</header>
+
+<main class="wrap">
+  <section class="card address-card">
+    <p class="label">নিজের পছন্দের নাম ও পাসওয়ার্ড দিন। একই নাম-পাসওয়ার্ড দিলে পরেও একই ইনবক্স পাবেন।</p>
+    <div class="inputrow">
+      <input id="user" type="text" placeholder="নাম (যেমন jannat01)" autocapitalize="none" autocomplete="off" spellcheck="false">
+      <select id="domain"><option>লোড হচ্ছে…</option></select>
+    </div>
+    <div class="inputrow pass">
+      <input id="pass" type="password" placeholder="পাসওয়ার্ড (মনে রাখুন, কমপক্ষে ৬ অক্ষর)" autocomplete="off">
+      <button id="eyeBtn" class="eye" type="button">👁</button>
+    </div>
+    <div class="actions">
+      <button id="openBtn" class="btn primary">📬 খুলুন</button>
+      <button id="copyBtn" class="btn">📋 কপি</button>
+      <button id="refreshBtn" class="btn">🔄 রিফ্রেশ</button>
+      <button id="randBtn" class="btn">🎲 র‍্যান্ডম</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <p class="hint" id="status">নাম আর পাসওয়ার্ড লিখে "খুলুন" চাপুন</p>
+  </section>
+
+  <section class="card">
+    <div class="inbox-head">
+      <h2>ইনবক্স</h2>
+      <span id="count" class="badge">0</span>
+    </div>
+    <ul id="list" class="list"></ul>
+    <div id="empty" class="empty">
+      <div class="big">📭</div>
+      <p>কোনো মেইল নেই। উপরের ঠিকানায় মেইল/কোড পাঠান, এখানে দেখা যাবে।</p>
+    </div>
+  </section>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <button id="closeBtn" class="icon-btn">←</button>
+      <h3 id="mSubject"></h3>
+      <button id="delBtn" class="icon-btn" title="ডিলিট">🗑</button>
+    </div>
+    <div class="meta" id="mMeta"></div>
+    <iframe id="mFrame" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
