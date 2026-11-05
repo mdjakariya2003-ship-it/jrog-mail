@@ -1,0 +1,228 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Generate Android project from web files
+        run: |
+          set -e
+          P=android
+          mkdir -p $P/app/src/main/assets/www $P/app/src/main/java/com/tremmail/app $P/app/src/main/res/mipmap-xxxhdpi
+
+          # ওয়েব ফাইল কপি
+          [ -f icon.svg ] && cp icon.svg $P/app/src/main/assets/www/ || true
+          for f in index.html app.js style.css; do
+            if [ -f "$f" ]; then cp "$f" $P/app/src/main/assets/www/; else echo "MISSING: $f"; exit 1; fi
+          done
+
+          # আইকন (না থাকলে সাধারণ বেগুনি আইকন বানাবে)
+          if [ -f icon-192.png ]; then
+            cp icon-192.png $P/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          else
+            python3 - <<'PYEOF'
+          import zlib, struct
+          w = h = 192
+          row = b"\x00" + bytes([108, 92, 231]) * w
+          raw = row * h
+          def chunk(t, d):
+              c = struct.pack(">I", len(d)) + t + d
+              return c + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+          open("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png", "wb").write(png)
+          PYEOF
+          fi
+
+          cat > $P/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "TremMail"
+          include ':app'
+          EOF
+
+          cat > $P/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF
+
+          cat > $P/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=false
+          EOF
+
+          cat > $P/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.tremmail.app'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.tremmail.app"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          cat > $P/app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:label="Trem Mail"
+                  android:icon="@mipmap/ic_launcher"
+                  android:allowBackup="true"
+                  android:usesCleartextTraffic="false"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > $P/app/src/main/java/com/tremmail/app/MainActivity.java <<'EOF'
+          package com.tremmail.app;
+
+          import android.app.Activity;
+          import android.content.ClipData;
+          import android.content.ClipboardManager;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.os.Message;
+          import android.view.View;
+          import android.view.Window;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              public class Bridge {
+                  @JavascriptInterface
+                  public void copy(String text) {
+                      ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                      cm.setPrimaryClip(ClipData.newPlainText("TremMail", text));
+                  }
+              }
+
+              private void openExternal(String url) {
+                  try {
+                      Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                      startActivity(i);
+                  } catch (Exception ignored) { }
+              }
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  Window w = getWindow();
+                  w.setStatusBarColor(Color.parseColor("#6c5ce7"));
+
+                  web = new WebView(this);
+                  setContentView(web);
+
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  s.setAllowFileAccess(true);
+                  s.setSupportMultipleWindows(true);
+                  s.setJavaScriptCanOpenWindowsAutomatically(true);
+
+                  web.addJavascriptInterface(new Bridge(), "AndroidBridge");
+
+                  web.setWebViewClient(new WebViewClient() {
+                      @Override
+                      public boolean shouldOverrideUrlLoading(WebView v, android.webkit.WebResourceRequest r) {
+                          String u = r.getUrl().toString();
+                          if (u.startsWith("file:///android_asset/")) return false;
+                          openExternal(u);
+                          return true;
+                      }
+                  });
+
+                  web.setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                          WebView tmp = new WebView(MainActivity.this);
+                          tmp.setWebViewClient(new WebViewClient() {
+                              @Override
+                              public boolean shouldOverrideUrlLoading(WebView v, android.webkit.WebResourceRequest r) {
+                                  openExternal(r.getUrl().toString());
+                                  return true;
+                              }
+                          });
+                          WebView.WebViewTransport t = (WebView.WebViewTransport) resultMsg.obj;
+                          t.setWebView(tmp);
+                          resultMsg.sendToTarget();
+                          return true;
+                      }
+                  });
+
+                  web.loadUrl("file:///android_asset/www/index.html");
+              }
+
+              @Override
+              public void onBackPressed() {
+                  web.evaluateJavascript(
+                      "(function(){var m=document.getElementById('modal');if(m&&!m.classList.contains('hidden')){m.classList.add('hidden');return 1;}return 0;})()",
+                      value -> { if (!"1".equals(value)) finish(); });
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle -p android assembleDebug --no-daemon
+
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk TremMail.apk
+
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Trem Mail APK ${{ github.run_number }}
+          files: TremMail.apk

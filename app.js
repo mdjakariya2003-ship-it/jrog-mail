@@ -24,6 +24,17 @@ function findCode(s) {
   m = s.match(/\b(\d{4,8})\b/); return m ? m[1] : null;
 }
 
+
+// ক্লিপবোর্ডে কপি (ব্রাউজার + অ্যান্ড্রয়েড অ্যাপ দুটোতেই কাজ করে)
+async function copyText(t) {
+  try { if (window.AndroidBridge && AndroidBridge.copy) { AndroidBridge.copy(String(t)); return true; } } catch {}
+  try { await navigator.clipboard.writeText(t); return true; } catch {}
+  try {
+    const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0";
+    document.body.appendChild(a); a.select(); const ok = document.execCommand("copy"); a.remove(); return ok;
+  } catch { return false; }
+}
+
 async function http(base, path, opt = {}, token) {
   const headers = { ...(opt.headers || {}) };
   if (opt.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
@@ -155,7 +166,7 @@ async function openMsg(id) {
 
 $("list").onclick = async e => {
   const c = e.target.closest(".code");
-  if (c) { e.stopPropagation(); try { await navigator.clipboard.writeText(c.dataset.code); toast("কোড কপি হয়েছে ✔"); } catch { toast(c.dataset.code); } return; }
+  if (c) { e.stopPropagation(); if (await copyText(c.dataset.code)) toast("কোড কপি হয়েছে ✔"); else toast(c.dataset.code); return; }
   const li = e.target.closest(".item"); if (li) openMsg(li.dataset.id);
 };
 $("chips").onclick = e => {
@@ -168,7 +179,7 @@ $("openBtn").onclick = openFromForm;
 $("pass").onkeydown = $("user").onkeydown = e => { if (e.key === "Enter") openFromForm(); };
 $("eyeBtn").onclick = () => { const p = $("pass"); p.type = p.type === "password" ? "text" : "password"; };
 $("refreshBtn").onclick = () => refresh();
-$("copyBtn").onclick = async () => { if (!acc) return toast("আগে খুলুন"); try { await navigator.clipboard.writeText(acc.address); toast("কপি হয়েছে ✔"); } catch { toast("কপি করা যায়নি"); } };
+$("copyBtn").onclick = async () => { if (!acc) return toast("আগে খুলুন"); if (await copyText(acc.address)) toast("কপি হয়েছে ✔"); else toast("কপি করা যায়নি"); };
 $("randBtn").onclick = () => {
   const c = "abcdefghjkmnpqrstuvwxyz23456789"; let s = "", p = "";
   for (let i = 0; i < 10; i++) s += c[Math.floor(Math.random() * c.length)];
