@@ -1,5 +1,5 @@
 import PostalMime from "postal-mime";
-import { INDEX_HTML, SW_JS, MANIFEST, ICON_SVG, ICON_192, ICON_512 } from "./ui.js";
+import { INDEX_HTML, STYLE_CSS, APP_JS, SW_JS, MANIFEST, ICON_SVG, ICON_192, ICON_512 } from "./ui.js";
 
 const KEEP_DAYS = 30;
 const BOX_RE = /^[a-z0-9._-]{1,64}$/;
@@ -28,6 +28,39 @@ function findCode(subject, text) {
   if (m) return m[1];
   m = s.match(/\b(\d{4,8})\b/);
   return m ? m[1] : null;
+}
+
+
+// mail.tm / mail.gw এর জন্য প্রক্সি (ফোনে সরাসরি ব্লক থাকলে এই পথে যায়)
+const UPSTREAM = { tm: "https://api.mail.tm", gw: "https://api.mail.gw" };
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
+  "access-control-allow-headers": "authorization,content-type,accept",
+  "access-control-max-age": "86400",
+};
+async function proxy(request, url) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const m = url.pathname.match(/^\/proxy\/(tm|gw)(\/.*)?$/);
+  if (!m) return new Response("Not found", { status: 404, headers: CORS });
+  const headers = new Headers();
+  for (const h of ["authorization", "content-type", "accept"]) {
+    const v = request.headers.get(h); if (v) headers.set(h, v);
+  }
+  const hasBody = !["GET", "HEAD"].includes(request.method);
+  try {
+    const r = await fetch(UPSTREAM[m[1]] + (m[2] || "/") + url.search, {
+      method: request.method, headers, body: hasBody ? request.body : undefined, redirect: "follow",
+    });
+    const out = new Headers(CORS);
+    out.set("content-type", r.headers.get("content-type") || "application/json");
+    out.set("cache-control", "no-store");
+    return new Response(r.status === 204 ? null : r.body, { status: r.status, headers: out });
+  } catch (e) {
+    return new Response(JSON.stringify({ message: "proxy error: " + String((e && e.message) || e) }), {
+      status: 502, headers: { ...CORS, "content-type": "application/json" },
+    });
+  }
 }
 
 async function api(request, env, url) {
@@ -88,6 +121,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const p = url.pathname;
+    if (p.startsWith("/proxy/") || request.method === "OPTIONS") return proxy(request, url);
     if (p.startsWith("/api/")) {
       try { return await api(request, env, url); }
       catch (e) { return json({ error: String(e && e.message || e) }, 500); }
@@ -95,6 +129,8 @@ export default {
     const domain = env.DOMAIN || "jrog.com";
     const page = (body, type) => new Response(body, { headers: { "content-type": type, "cache-control": "no-cache" } });
     if (p === "/" || p === "/index.html") return page(INDEX_HTML.replaceAll("__DOMAIN__", domain), "text/html; charset=utf-8");
+    if (p === "/style.css") return page(STYLE_CSS, "text/css; charset=utf-8");
+    if (p === "/app.js") return page(APP_JS, "text/javascript; charset=utf-8");
     if (p === "/manifest.json") return page(MANIFEST.replaceAll("__DOMAIN__", domain), "application/manifest+json");
     if (p === "/sw.js") return page(SW_JS, "text/javascript");
     if (p === "/icon.svg") return page(ICON_SVG, "image/svg+xml");

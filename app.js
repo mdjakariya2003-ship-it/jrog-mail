@@ -1,7 +1,11 @@
 // Trem Mail v2 – mail.tm ফ্রি API, নিজের পছন্দের নাম + পাসওয়ার্ড দিয়ে একই ইনবক্স বারবার খোলা যায়
+// Cloudflare Worker প্রক্সি (ব্লক এড়াতে) – আগে এটা, না হলে সরাসরি mail.tm / mail.gw
+const PROXY = "https://jrog-mail.mdjakariya2003.workers.dev";
 const PROVIDERS = [
-  { id: "tm", base: "https://api.mail.tm" },
-  { id: "gw", base: "https://api.mail.gw" }
+  { id: "tp", fam: "tm", base: PROXY + "/proxy/tm" },
+  { id: "gp", fam: "gw", base: PROXY + "/proxy/gw" },
+  { id: "tm", fam: "tm", base: "https://api.mail.tm" },
+  { id: "gw", fam: "gw", base: "https://api.mail.gw" }
 ];
 const provById = (id) => PROVIDERS.find(p => p.id === id) || PROVIDERS[0];
 const provByBase = (b) => PROVIDERS.find(p => p.base === b) || PROVIDERS[0];
@@ -39,7 +43,8 @@ async function http(base, path, opt = {}, token) {
   const headers = { ...(opt.headers || {}) };
   if (opt.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = "Bearer " + token;
-  const r = await fetch(base + path, { ...opt, headers });
+  const sig = (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
+  const r = await fetch(base + path, { ...opt, headers, signal: sig });
   if (r.status === 204) return null;
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.message || j["hydra:description"] || ("ত্রুটি " + r.status)); e.status = r.status; throw e; }
@@ -47,16 +52,25 @@ async function http(base, path, opt = {}, token) {
 }
 
 async function loadDomains() {
-  const opts = [], errs = [];
+  const opts = [], errs = [], seen = new Set();
+  const render = () => {
+    $("domain").innerHTML = opts.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join("");
+  };
+  $("status").textContent = "ডোমেইন লোড হচ্ছে…";
   await Promise.all(PROVIDERS.map(async p => {
     try {
       const j = await http(p.base, "/domains");
-      (j["hydra:member"] || []).filter(d => d.isActive !== false).forEach(d => opts.push({ v: d.domain + "|" + p.id, t: "@" + d.domain }));
+      const before = $("domain").value;
+      (j["hydra:member"] || []).filter(d => d.isActive !== false).forEach(d => {
+        const k = p.fam + "|" + d.domain; if (seen.has(k)) return; seen.add(k);
+        opts.push({ v: d.domain + "|" + p.id, t: "@" + d.domain });
+      });
+      render();
+      if (before && [...$("domain").options].some(o => o.value === before)) $("domain").value = before;
+      if (opts.length) $("status").textContent = "নাম ও পাসওয়ার্ড লিখে \"খুলুন\" চাপুন";
     } catch (e) { errs.push(p.id + ": " + e.message); }
   }));
-  if (opts.length) {
-    $("domain").innerHTML = opts.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join("");
-  } else {
+  if (!opts.length) {
     $("domain").innerHTML = '<option value="">ডোমেইন লোড হয়নি</option>';
     $("status").textContent = "ডোমেইন লোড হয়নি (" + (errs.join(" | ") || "অজানা") + "). নেট/ডেটা বদলে আবার চেষ্টা করুন।";
   }
@@ -198,7 +212,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 
 (async function init() {
   chips();
-  await loadDomains();
+  loadDomains();
   const cur = ls.get("tm_current", null);
   const a = ls.get("tm_accounts", []).find(x => x.address === cur);
   if (a) openAccount(a.address, a.password, a.base);
