@@ -107,16 +107,18 @@ function chips() {
     `<span class="chip ${x.address === cur ? "on" : ""}" data-a="${esc(x.address)}">${esc(x.address.split("@")[0])}<b data-x="${esc(x.address)}">✕</b></span>`).join("");
 }
 
-async function openAccount(address, password, base) {
+async function openAccount(address, password, base, soft) {
   base = base || PROVIDERS[0].base;
   $("status").textContent = "খোলা হচ্ছে…";
   try {
     acc = await connect(base, address, password);
   } catch (e) {
+    const retry = !e.status || e.status === 429 || e.status >= 500;
+    if (retry && soft) { $("status").textContent = "সার্ভার ব্যস্ত (" + e.message + "), অন্য ডোমেইনে চেষ্টা করছি…"; return "retry"; }
     const code = e.status ? " [" + e.status + "]" : "";
     const via = base.indexOf("workers.dev") >= 0 ? "প্রক্সি" : "সরাসরি";
     $("status").textContent = "ব্যর্থ" + code + " (" + via + "): " + e.message + " — অন্য ডোমেইন বেছে আবার 'খুলুন' চাপুন";
-    toast(e.message); return;
+    toast(e.message); return "fail";
   }
   saveAccount(acc);
   $("user").value = address.split("@")[0]; $("pass").value = password;
@@ -125,6 +127,7 @@ async function openAccount(address, password, base) {
   $("status").textContent = address + (acc.created ? " (নতুন তৈরি হলো)" : " (খোলা হলো)") + " – অটো-রিফ্রেশ চালু";
   await refresh();
   clearInterval(timer); timer = setInterval(() => refresh(true), 10000);
+  return "ok";
 }
 
 async function openFromForm() {
@@ -133,8 +136,16 @@ async function openFromForm() {
   if (!/^[a-z0-9._-]{3,30}$/.test(u)) return toast("নাম: ৩–৩০ অক্ষর, শুধু a-z, 0-9, . _ -");
   if (p.length < 6) return toast("পাসওয়ার্ড কমপক্ষে ৬ অক্ষর দিন");
   if (!$("domain").value) { toast("ডোমেইন আবার লোড করছি…"); if (!(await loadDomains())) return; }
-  const [d, pid] = $("domain").value.split("|");
-  openAccount(u + "@" + d, p, provById(pid).base);
+  const chosen = $("domain").value;
+  const famOf = (v) => provById(v.split("|")[1]).fam;
+  const all = [...$("domain").options].map(o => o.value).filter(v => v && v !== chosen);
+  const order = [chosen, ...all.filter(v => famOf(v) !== famOf(chosen)), ...all.filter(v => famOf(v) === famOf(chosen))].slice(0, 5);
+  for (let i = 0; i < order.length; i++) {
+    const [d, pid] = order[i].split("|");
+    const r = await openAccount(u + "@" + d, p, provById(pid).base, i < order.length - 1);
+    if (r !== "retry") return;
+    await new Promise(res => setTimeout(res, 900));
+  }
 }
 
 async function refresh(silent) {
