@@ -39,12 +39,13 @@ async function copyText(t) {
   } catch { return false; }
 }
 
-async function http(base, path, opt = {}, token) {
+async function http(base, path, opt = {}, token, retried) {
   const headers = { ...(opt.headers || {}) };
   if (opt.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = "Bearer " + token;
   const sig = (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? AbortSignal.timeout(15000) : undefined;
   const r = await fetch(base + path, { ...opt, headers, signal: sig });
+  if (r.status === 429 && !retried) { await new Promise(res => setTimeout(res, 1800)); return http(base, path, opt, token, true); }
   if (r.status === 204) return null;
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.message || j["hydra:description"] || ("ত্রুটি " + r.status)); e.status = r.status; throw e; }
@@ -111,7 +112,12 @@ async function openAccount(address, password, base) {
   $("status").textContent = "খোলা হচ্ছে…";
   try {
     acc = await connect(base, address, password);
-  } catch (e) { $("status").textContent = "ব্যর্থ"; toast(e.message); return; }
+  } catch (e) {
+    const code = e.status ? " [" + e.status + "]" : "";
+    const via = base.indexOf("workers.dev") >= 0 ? "প্রক্সি" : "সরাসরি";
+    $("status").textContent = "ব্যর্থ" + code + " (" + via + "): " + e.message + " — অন্য ডোমেইন বেছে আবার 'খুলুন' চাপুন";
+    toast(e.message); return;
+  }
   saveAccount(acc);
   $("user").value = address.split("@")[0]; $("pass").value = password;
   const dv = address.split("@")[1] + "|" + provByBase(base).id; if ([...$("domain").options].some(o => o.value === dv)) $("domain").value = dv;
@@ -193,7 +199,15 @@ $("openBtn").onclick = openFromForm;
 $("pass").onkeydown = $("user").onkeydown = e => { if (e.key === "Enter") openFromForm(); };
 $("eyeBtn").onclick = () => { const p = $("pass"); p.type = p.type === "password" ? "text" : "password"; };
 $("refreshBtn").onclick = () => refresh();
-$("copyBtn").onclick = async () => { if (!acc) return toast("আগে খুলুন"); if (await copyText(acc.address)) toast("কপি হয়েছে ✔"); else toast("কপি করা যায়নি"); };
+$("copyBtn").onclick = async () => {
+  let a = acc && acc.address;
+  if (!a) {
+    const u = $("user").value.toLowerCase().trim().replace(/@.*$/, ""), d = ($("domain").value || "").split("|")[0];
+    if (u && d) a = u + "@" + d;
+  }
+  if (!a) return toast("আগে নাম লিখুন");
+  if (await copyText(a)) toast("কপি হয়েছে ✔ " + a); else toast("কপি করা যায়নি: " + a);
+};
 $("randBtn").onclick = () => {
   const c = "abcdefghjkmnpqrstuvwxyz23456789"; let s = "", p = "";
   for (let i = 0; i < 10; i++) s += c[Math.floor(Math.random() * c.length)];
