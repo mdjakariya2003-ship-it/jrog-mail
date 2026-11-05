@@ -13,7 +13,7 @@ DOMAIN = "jrog.com"
 [[d1_databases]]
 binding = "DB"
 database_name = "jrog-mail"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "05e97bca-e8af-4bd4-b005-9870d983ca67"
 
 # প্রতিদিন রাত ৩টায় (UTC) ৩০ দিনের পুরোনো মেইল মুছবে
 [triggers]
